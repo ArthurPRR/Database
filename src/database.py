@@ -1,9 +1,13 @@
-
 import json
 import os
 import glob
-
 import hashlib
+
+try:
+    from .btree import BTree
+except ImportError:
+    from btree import BTree
+
 
 class Database:
 
@@ -21,15 +25,12 @@ class Database:
 
         self._load_indexes()
 
-    # Convertir une valeur en clé JSON non ambiguë
     def _index_key(self, value):
         return json.dumps(value, sort_keys=True, ensure_ascii=False)
 
-    # Chemin du fichier d'index
     def _index_filename(self, field):
         return f"{self.filename}.{field}.index.json"
 
-    # Charger les index depuis le disque
     def _load_indexes(self):
         pattern = f"{self.filename}.*.index.json"
 
@@ -38,18 +39,27 @@ class Database:
             field = path[len(prefix):-len(".index.json")]
 
             with open(path, "r", encoding="utf-8") as file:
-                self.indexes[field] = json.load(file)
+                data = json.load(file)
 
-    # Sauvegarder un index
+            if isinstance(data, dict) and data.get("type") == "btree":
+                self.indexes[field] = BTree.from_dict(data)
+            else:
+                index = BTree()
+                if isinstance(data, dict):
+                    for key, offsets in data.items():
+                        for offset in offsets:
+                            index.insert(key, offset)
+                self.indexes[field] = index
+                self._save_index(field)
+
     def _save_index(self, field):
         path = self._index_filename(field)
 
         with open(path, "w", encoding="utf-8") as file:
-            json.dump(self.indexes[field], file, indent=4)
+            json.dump(self.indexes[field].to_dict(), file)
 
-    # Reconstruire un index
     def _rebuild_index(self, field):
-        index = {}
+        index = BTree()
 
         with open(self.filename, "rb") as file:
             while True:
@@ -65,18 +75,15 @@ class Database:
                     continue
 
                 key = self._index_key(document[field])
-
-                index.setdefault(key, []).append(offset)
+                index.insert(key, offset)
 
         self.indexes[field] = index
         self._save_index(field)
 
-    # Créer un index sur un champ
     def create_index(self, field):
         self._rebuild_index(field)
         print(f"Index created on field: {field}")
 
-    # CREATE
     def create(self, document):
         if "id" not in document:
             raise ValueError("Document must have an id")
@@ -87,20 +94,17 @@ class Database:
         data = (
             json.dumps(document, ensure_ascii=False) + "\n"
         ).encode("utf-8")
-        
-        partition_file = self._get_partition_file(document)
 
-        with open(partition_file, "ab") as file:
+        with open(self.filename, "ab") as file:
             offset = file.tell()
-            file.write(data)
+            file.write(data.encode("utf-8"))
 
         for field, index in self.indexes.items():
             if field in document:
                 key = self._index_key(document[field])
-                index.setdefault(key, []).append(offset)
+                index.insert(key, offset)
                 self._save_index(field)
 
-    # READ
     def read(self, value, field="id"):
 
         if self.partition_field == field:
@@ -123,13 +127,32 @@ class Database:
                 for line in file:
 
                     document = json.loads(line)
+        if field in self.indexes:
+            key = self._index_key(value)
+            offsets = self.indexes[field].search(key)
+
+            if not offsets:
+                return None
+
+            with open(self.filename, "rb") as file:
+                for offset in offsets:
+                    file.seek(offset)
+                    document = json.loads(file.readline().decode("utf-8"))
+
+                    if document.get(field) == value:
+                        return document
+
+            return None
+
+        with open(self.filename, "r", encoding="utf-8") as file:
+            for line in file:
+                document = json.loads(line)
 
                     if document.get(field) == value:
                         return document
 
         return None
 
-    # UPDATE
     def update(self, document_id, updates):
         documents = []
         found = False
@@ -158,7 +181,6 @@ class Database:
 
         return True
 
-    # DELETE
     def delete(self, document_id):
         documents = []
         found = False
