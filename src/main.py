@@ -8,11 +8,17 @@ from database import Database
 filename = "data/users.jsonl"
 
 # Nettoyage pour rendre l'exemple reproductible.
-for path in [filename] + glob.glob(filename + ".*.index.json"):
+paths = (
+    [filename, filename + ".metadata.json"]
+    + glob.glob(filename + ".*.index.json")
+    + glob.glob(filename + ".partition_*.jsonl")
+)
+for path in paths:
     if os.path.exists(path):
         os.remove(path)
 
 db = Database(filename)
+db.enable_partitioning(field="id", partition_count=2)
 
 # Ajout de documents dans la table.
 db.create({"id": 1, "name": "Alice", "age": 25})
@@ -26,11 +32,13 @@ db.create_index("id")
 db.create_index("name")
 
 # Informations sur les index B-Tree.
-for field, index in db.indexes.items():
-    print(
-        f"Index '{field}' : degré={index.degree}, "
-        f"racine avec {len(index.root.keys)} clé(s)"
-    )
+for field, partition_indexes in db.indexes.items():
+    for partition_id, index in partition_indexes.items():
+        print(
+            f"Index '{field}' partition {partition_id} : "
+            f"degré={index.degree}, "
+            f"racine avec {len(index.root.keys)} clé(s)"
+        )
 
 # Recherche grâce aux index.
 print("Recherche par ID :", db.read(2))
@@ -51,3 +59,8 @@ print("Après suppression :", db.read(1))
 reloaded_db = Database(filename)
 print("Après rechargement :", reloaded_db.read("Charlie", field="name"))
 print("Tous les index chargés :", list(reloaded_db.indexes))
+print(
+    "Partitionnement restauré :",
+    reloaded_db.partition_field,
+    reloaded_db.partition_count,
+)
