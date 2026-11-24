@@ -1,45 +1,41 @@
 
 from database import Database
 
+db = Database("data/users.jsonl")
 
-def main():
-    db = Database("data/users.jsonl")
+# Création des documents
+db.create({
+    "id": 1,
+    "name": "Alice",
+    "age": 25
+})
 
-    # CREATE
-    db.create({
-        "id": 1,
-        "name": "Alice",
-        "age": 25
-    })
+db.create({
+    "id": 2,
+    "name": "Bob",
+    "age": 30
+})
 
-    db.create({
-        "id": 2,
-        "name": "Bob",
-        "age": 30
-    })
+db.create({
+    "id": 3,
+    "name": "Charlie",
+    "age": 22
+})
 
-    db.create({
-        "id": 3,
-        "name": "Charlie",
-        "age": 22
-    })
+# Création d'un index sur l'ID
+db.create_index("id")
 
-    # READ
-    user = db.read(2)
-    print("Found:", user)
+# Création d'un deuxième index sur le nom
+db.create_index("name")
 
-    # UPDATE
-    db.update(2, {
-        "age": 31
-    })
+# Lecture avec l'index ID
+print(db.read(2))
 
-    print("After update:", db.read(2))
+# Lecture avec l'index name
+print(db.read("Alice", field="name"))
 
-    # DELETE
-    db.delete(1)
+# Modification
+db.update(2, {"age": 31})
 
-    print("After delete:", db.read(1))
-
-
-if __name__ == "__main__":
-    main()
+# Suppression
+db.delete(1)

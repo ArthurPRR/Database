@@ -23,7 +23,7 @@ htmlcov/
 *.log
 
 # Données générées par la base
-data/*.jsonl
+data/*
 
 # Résultats des benchmarks
 results/*.csv
